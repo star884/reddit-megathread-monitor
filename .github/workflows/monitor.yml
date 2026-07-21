@@ -31,7 +31,7 @@ jobs:
 
       - name: Commit updated state
         run: |
-          if git diff --quiet -- seen.json; then
+          if git diff --quiet -- state.json; then
             echo "No state changes"
             exit 0
           fi
