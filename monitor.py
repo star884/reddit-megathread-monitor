@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 
 import feedparser
@@ -35,22 +36,41 @@ def entry_key(entry):
 
 
 def discord_post(entry):
+    if not WEBHOOK_URL:
+        raise RuntimeError("DISCORD_WEBHOOK_URL is missing")
+
+    author = getattr(entry, "author", "Unknown")
+
+    comment = getattr(entry, "summary", "")
+    comment = (
+        comment.replace("<br />", "\n")
+               .replace("<br/>", "\n")
+               .replace("&gt;", ">")
+               .replace("&amp;", "&")
+    )
+
+    comment = re.sub(r"<[^>]+>", "", comment).strip()
+
+    if len(comment) > 1800:
+        comment = comment[:1800] + "..."
+
     payload = {
+        "username": "Reddit Comment Monitor",
         "embeds": [
             {
-                "title": getattr(entry, "title", "New Reddit Comment"),
+                "title": f"💬 New comment by u/{author}",
+                "description": comment or "*No comment text available.*",
                 "url": entry.link,
-                "description": getattr(entry, "summary", ""),
+                "color": 0xFF5700,
                 "footer": {
-                    "text": f"by {getattr(entry, 'author', 'Unknown')}"
-                },
-                "color": 0xFF5700
+                    "text": "r/Doraemon • Click the title to open the comment"
+                }
             }
         ]
     }
 
-    r = requests.post(WEBHOOK_URL, json=payload)
-    r.raise_for_status()
+    response = requests.post(WEBHOOK_URL, json=payload, timeout=20)
+    response.raise_for_status()
 
 
 def main():
@@ -83,7 +103,8 @@ def main():
             break
         new_comments.append(entry)
 
-    # If old comment disappeared from feed, reseed
+    # If the previous comment disappeared from the RSS feed,
+    # reseed instead of posting everything.
     if len(new_comments) == len(feed.entries):
         save_state(newest)
         print("Previous comment not found. Reseeded.")
